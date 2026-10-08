@@ -1,0 +1,10 @@
+tastytrade==13.2.3
+python-dotenv>=1.0.1
+httpx>=0.27.0
+pandas>=2.2.0
+numpy>=1.26.0
+scipy>=1.13.0
+holidays>=0.57
+pytest>=8.2.0
+pytest-asyncio>=0.23.0
+tzdata>=2024.1

@@ -1,0 +1,78 @@
+// Pine Script®
+// © RakoQuant
+// Reference copy of the indicator ported to indicators/supertrend.py.
+// Only the ENGINE section matters for the bot; visuals are omitted here.
+
+//@version=6
+indicator("SWMA Momentum SuperTrend | RakoQuant", shorttitle="RQ SWMA MOM ST", overlay=true)
+
+mode = input.string("Daily / Swing", "Mode", options=["Daily / Swing", "Intraday", "Custom"], group="Mode")
+
+preset_swmaSmooth_daily = input.int(8, "Daily SWMA Smooth", minval=1, group="Mode Presets")
+preset_atrLen_daily     = input.int(15, "Daily ATR Len",     minval=1, group="Mode Presets")
+preset_factor_daily     = input.float(3.2, "Daily Factor",   minval=0.1, step=0.1, group="Mode Presets")
+preset_momLen_daily     = input.int(11, "Daily Mom Len",     minval=1, group="Mode Presets")
+
+preset_swmaSmooth_intra = input.int(8,  "Intraday SWMA Smooth", minval=1, group="Mode Presets")
+preset_atrLen_intra     = input.int(10, "Intraday ATR Len",     minval=1, group="Mode Presets")
+preset_factor_intra     = input.float(2.2, "Intraday Factor",   minval=0.1, step=0.1, group="Mode Presets")
+preset_momLen_intra     = input.int(7,  "Intraday Mom Len",     minval=1, group="Mode Presets")
+
+swmaSmooth_custom = input.int(14, "SWMA Smoothing Length", minval=1, group="Custom")
+atrLen_custom     = input.int(14, "ATR Length",           minval=1, group="Custom")
+factor_custom     = input.float(3.0, "Factor",            minval=0.1, step=0.1, group="Custom")
+momLen_custom     = input.int(10, "Momentum Length",      minval=1, group="Custom")
+
+src = input.source(high, "Source", group="Source")
+
+useSmooth = input.bool(true, "Use Signal Smoothing", group="Filter")
+smoothLen = input.int(3, "Smoothing Length", minval=1, group="Filter")
+momGate = input.float(0.5, "Momentum Gate (0..1)", minval=0, maxval=1, step=0.05, group="Filter")
+
+swmaSmooth = mode == "Custom" ? swmaSmooth_custom : mode == "Intraday" ? preset_swmaSmooth_intra : preset_swmaSmooth_daily
+atrLen     = mode == "Custom" ? atrLen_custom     : mode == "Intraday" ? preset_atrLen_intra     : preset_atrLen_daily
+factor     = mode == "Custom" ? factor_custom     : mode == "Intraday" ? preset_factor_intra     : preset_factor_daily
+momLen     = mode == "Custom" ? momLen_custom     : mode == "Intraday" ? preset_momLen_intra     : preset_momLen_daily
+
+// ENGINE
+swma_raw = ta.swma(src)
+baseline = ta.ema(swma_raw, swmaSmooth)
+
+atr = ta.atr(atrLen)
+mom = baseline - baseline[momLen]
+
+baseline_s = (useSmooth and mode == "Intraday") ? ta.ema(baseline, smoothLen) : baseline
+atr_s      = (useSmooth and mode == "Intraday") ? ta.ema(atr, smoothLen)      : atr
+mom_s      = (useSmooth and mode == "Intraday") ? ta.ema(mom, smoothLen)      : mom
+
+upperband = baseline_s + factor * atr_s
+lowerband = baseline_s - factor * atr_s
+
+prevupper = nz(upperband[1])
+prevlower = nz(lowerband[1])
+
+upperband := upperband < prevupper or close[1] > prevupper ? upperband : prevupper
+lowerband := lowerband > prevlower or close[1] < prevlower ? lowerband : prevlower
+
+momNorm = atr_s != 0.0 ? mom_s / atr_s : 0.0
+gateUp   = (1.0 - momGate) * 0.0 + momGate * 0.10
+gateDown = -(1.0 - momGate) * 0.0 - momGate * 0.10
+
+int dir = na   // dir < 0 bullish, dir > 0 bearish
+float st = na
+
+float prevSt    = nz(st[1])
+float prevUpper = nz(upperband[1])
+
+if na(baseline_s[1]) or na(atr_s[1])
+    dir := 1
+else
+    bool wasBear  = prevSt == prevUpper
+    bool flipBull = close > upperband and momNorm > gateUp
+    bool flipBear = close < lowerband and momNorm < gateDown
+    dir := wasBear ? (flipBull ? -1 : 1) : (flipBear ? 1 : -1)
+
+st := dir == -1 ? lowerband : upperband
+
+bullFlip = dir < 0 and dir[1] > 0
+bearFlip = dir > 0 and dir[1] < 0
